@@ -1,0 +1,129 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\geometry{margin=2.5cm}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    language=C++,
+    keywordstyle=\bfseries,
+    commentstyle=\itshape
+}
+
+\title{Práctico 1 --- Patrones de acceso a memoria}
+\author{%
+  Pedro Calado Moura \quad Documento: 65092945\\
+  Kelvin Martinez \quad Documento: ---\\
+  Brandson \quad Documento: ---%
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+%==============================================================================
+\section{Plataforma computacional}
+%==============================================================================
+
+Todas las librerías de este trabajo se ejecutaron en un sistema operativo Linux con arquitectura de 64 bits en un procesador Intel(R) Core(TM) i7-14700HX (20 núcleos, 28 hilos lógicos) a una frecuencia base de 800 MHz y turbo de hasta 5,5 GHz, y una memoria RAM de 16 GB. Las mediciones se realizaron con \texttt{taskset -c 0} (un único núcleo), así el proceso no salta entre núcleos y los tiempos se interpretan mejor (una sola jerarquía de caché).
+
+\textbf{Tamaños de caché} (según \texttt{lscpu}):
+\begin{itemize}
+\item \textbf{L1d:} 768 KiB (20 instancias) \(\Rightarrow\) \(\approx 38\,\text{KiB}\) por núcleo
+\item \textbf{L1i:} 1 MiB (20 instancias)
+\item \textbf{L2:} 28 MiB (11 instancias) \(\Rightarrow\) \(\approx 2{,}5\,\text{MiB}\) por instancia
+\item \textbf{L3:} 33 MiB (1 instancia, compartida)
+\end{itemize}
+
+%==============================================================================
+\section{Ejercicio 1 --- Localidad espacial}
+%==============================================================================
+
+\subsection{Descripción}
+
+El ejercicio consiste en implementar dos recorridas sobre un arreglo de gran tamaño (100 MB de \texttt{char}) que visitan exactamente la misma cantidad de elementos, pero con patrones de acceso diferentes:
+
+\begin{enumerate}
+\item \textbf{Recorrida secuencial:} se visita el arreglo en orden (posición 0, 1, 2, \ldots).
+\item \textbf{Recorrida aleatoria:} se visitan las mismas posiciones pero en orden aleatorio.
+\end{enumerate}
+
+En ambos casos, el siguiente índice a visitar se obtiene leyendo de un arreglo de índices previamente inicializado. El objetivo es analizar el impacto de la \textbf{localidad espacial} en la jerarquía de memoria: el acceso secuencial explota la pre-carga de bloques contiguos en caché, mientras que el acceso aleatorio tiende a generar múltiples fallos de caché.
+
+\subsection{Resultados}
+
+El programa se ejecutó en un sistema con carga reducida. Ambas recorridas visitan exactamente \(100 \times 1024 \times 1024 = 104\,857\,600\) elementos.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Recorrida} & \textbf{Tiempo (ms)} \\
+\midrule
+Secuencial         & 54--56               \\
+Aleatoria          & 1091--1110           \\
+\bottomrule
+\end{tabular}
+\caption{Ejercicio 1: tiempos de ejecución (1 núcleo).}
+\label{tab:tiempos}
+\end{table}
+
+La recorrida aleatoria resulta aproximadamente \textbf{19--20 veces más lenta} que la secuencial. La variabilidad entre ejecuciones se debe a factores como el estado de la caché al inicio y la carga del sistema.
+
+\subsection{Reflexión}
+
+La diferencia de rendimiento se explica por la \textbf{localidad espacial} y la jerarquía de memoria.
+
+\textbf{Acceso secuencial:} Cuando se accede a posiciones contiguas, la CPU aprovecha las \emph{cache lines} (bloques típicos de 64 bytes). Al leer una posición, se trae a L1/L2 todo el bloque contiguo; los accesos siguientes caen en caché sin necesidad de ir a memoria principal. El ancho de banda efectivo se maximiza.
+
+\textbf{Acceso aleatorio:} Cada acceso puede dirigirse a una dirección distante que no está en caché. Esto provoca un \emph{cache miss} frecuente: la CPU debe ir a RAM para traer el dato. La memoria principal es del orden de 100 veces más lenta que la caché L1, por lo que el tiempo total aumenta drásticamente a pesar de realizar la misma cantidad de operaciones.
+
+En resumen, el experimento demuestra que el \textbf{orden de acceso a los datos} afecta fuertemente el desempeño debido a la jerarquía de memoria. Los patrones de acceso que respetan la localidad espacial (como el secuencial) se benefician del caché y son significativamente más rápidos que los que dispersan los accesos por todo el espacio de direcciones.
+
+%==============================================================================
+\section{Ejercicio 2 --- Multiplicación por bloques}
+%==============================================================================
+
+\subsection{Ejercicio 2.1 --- Determinación experimental del BS óptimo}
+
+Para tres matrices de tamaño mayor que la capacidad de la caché de último nivel (LLC), se busca el tamaño de bloque \texttt{BS} que maximice el rendimiento (MFLOPS) en la multiplicación por bloques 
+
+Se usó \(N = 1792\), de modo que las tres matrices suman \(3 \times 1792^2 \times 4\,\text{B} \approx 38\,\text{MB} > 33\,\text{MB}\) (LLC). Barrido de \texttt{BS} entre 8 y 128; MFLOPS definidos como \(N^3 / (\text{segundos} \times 10^6)\).
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}rcc@{}}
+\toprule
+\textbf{BS} & \textbf{Tiempo (ms)} & \textbf{MFLOPS} \\
+\midrule
+8   & 12575 & 458   \\
+32  & 9107  & 632   \\
+40  & 9070  & 634   \\
+64  & 6543  & 879   \\
+96  & 3825  & \textbf{1505} \\
+104 & 3890  & 1479  \\
+128 & 4057  & 1418  \\
+\bottomrule
+\end{tabular}
+\caption{Rendimiento para distintos \texttt{BS} (\(N=1792\), 1 núcleo).}
+\label{tab:bs}
+\end{table}
+
+El \textbf{BS óptimo experimental} resultó \textbf{96}, con unos 1505 MFLOPS. Aunque una estimación simple sugiere imponer \(3 \cdot BS^2 \cdot 4 \leq L1\), esa cuenta supone que los tres bloques completos de A, B y C deben residir simultáneamente en L1, lo cual no refleja el patrón de acceso real. El núcleo del loop interno es
+\begin{center}
+\texttt{C[i*N+j] += A[i*N+k] * B[k*N+j];}
+\end{center}
+donde \textbf{C} es la matriz resultado (acumulador), \textbf{A} la primera operando y \textbf{B} la segunda. En esta versión, el elemento de C puede permanecer en registro durante el loop en \(k\); A se accede por filas (contiguo en memoria) y la reutilización más crítica recae sobre el bloque de B (columnas). Para \(BS = 96\), un bloque de B ocupa \(\approx 36\,\text{KiB}\), cercano al L1d por núcleo, mientras que el conjunto de los tres bloques (\(\approx 108\,\text{KiB}\)) cabe en L2. Así, \(BS = 96\) resulta un buen compromiso entre reutilización y presión sobre la caché.
+
+\end{document}

@@ -1,2 +1,29 @@
 setear a 1 Core
 
+
+\subsection{Comparativa de velocidad según nivel de caché}
+
+Se ejecutó la multiplicación por bloques (BS = 96) para distintos \(N\), de modo que el \emph{working set} (\(12\,N^2\) bytes) quepa solo en L1, en L1+L2, en L1+L2+L3 o supere la LLC.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}rrllc@{}}
+\toprule
+\textbf{N} & \textbf{Working set} & \textbf{Contiene} & \textbf{Caché} & \textbf{MFLOPS} \\
+\midrule
+32   & 12 KiB   & $\leq$ L1           & L1             & 1559 \\
+64   & 48 KiB   & $>$ L1, $\leq$ L2   & L1+L2          & 1809 \\
+128  & 192 KiB  & L1+L2              & L1+L2          & 1875 \\
+256  & 768 KiB  & L1+L2              & L1+L2          & 1591 \\
+512  & 3 MiB    & L1+L2              & L1+L2          & 1558 \\
+1024 & 12 MiB   & L1+L2+L3           & L1+L2+L3       & 1455 \\
+2048 & 48 MiB   & $>$ L3             & Excede cache   & 1308 \\
+\bottomrule
+\end{tabular}
+\caption{Rendimiento (BS=96) según tamaño del problema y nivel de caché.}
+\label{tab:cache}
+\end{table}
+
+Cuando los datos caben en L1 o en L1+L2, el rendimiento es mayor (hasta \(\approx 1875\) MFLOPS para \(N=128\)). Al crecer \(N\) y superar L2 y L3, el working set excede la caché; el rendimiento baja por más fallos de caché y acceso a RAM (\(\approx 1308\) MFLOPS para \(N=2048\)).
+
+\end{document}
