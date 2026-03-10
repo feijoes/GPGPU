@@ -1,0 +1,2 @@
+setear a 1 Core
+
