@@ -1,0 +1,3 @@
+N=1800, BS 10..100 step=10, promediando 2 corridas (taskset -c 0)[14:48:43] Corrida 3/3 terminada.
+./barrido_promedio.sh: line 28: syntax error near unexpected token `done'
+./barrido_promedio.sh: line 28: `done'

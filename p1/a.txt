@@ -27,3 +27,50 @@ Se ejecutó la multiplicación por bloques (BS = 96) para distintos \(N\), de mo
 Cuando los datos caben en L1 o en L1+L2, el rendimiento es mayor (hasta \(\approx 1875\) MFLOPS para \(N=128\)). Al crecer \(N\) y superar L2 y L3, el working set excede la caché; el rendimiento baja por más fallos de caché y acceso a RAM (\(\approx 1308\) MFLOPS para \(N=2048\)).
 
 \end{document}
+
+
+
+
+
+
+
+Con los tamaños de caché del sistema (L1d \(\approx 38\,\text{KiB}\) por núcleo), el working set de tres bloques es \(12\,BS^2\) bytes. Para que quepa en L1: \(12\,BS^2 \leq 38 \times 1024\), luego \(BS \leq \sqrt{38912/12} \approx 56{,}9\). El \textbf{BS teórico} a partir de L1 es pues \(\approx 56\); entre los divisores de 1800 los más cercanos son 50 y 60. El \textbf{BS óptimo} medido entre los divisores de 1800 resultó \textbf{75}, con \(\approx 2504\) MFLOPS (tiempo \(\approx 2328\) ms). El criterio L1 sugiere BS \(\approx 56\) (divisores cercanos 50, 60); en este barrido 75 y 60 dieron los mejores MFLOPS. Aunque una estimación simple supone que los tres bloques residen simultáneamente en L1, el patrón real de acceso no es exactamente ese. El núcleo del loop interno es
+\begin{center}
+\texttt{C[i*N+j] += A[i*N+k] * B[k*N+j];}
+\end{center}
+donde \textbf{C} es la matriz resultado (acumulador), \textbf{A} la primera operando y \textbf{B} la segunda. En esta versión, el elemento de C puede permanecer en registro durante el loop en \(k\); A se accede por filas (contiguo en memoria) y la reutilización más crítica recae sobre el bloque de B (columnas). Para \(BS = 75\), un bloque de B ocupa \(75^2 \times 4 \approx 22\,\text{KiB}\); el conjunto de los tres bloques (\(\approx 68\,\text{KiB}\)) supera L1d pero cabe en L2. Así, \(BS = 75\) resulta un buen compromiso entre reutilización y presión sobre la caché en esta medición.
+
+\subsection{Ejercicio 2.2 --- Comparación bloqueado (BS óptimo) vs lineal ikj}
+
+Se comparó la versión a bloques con \(BS = 75\) (óptimo para \(N=1800\) en el barrido anterior) con la variante lineal de orden de loops \(i, k, j\):
+
+\begin{lstlisting}[caption={Variante lineal ikj}]
+for (i = 0; i < N; i++)
+    for (k = 0; k < N; k++)
+        for (j = 0; j < N; j++)
+            C[i*N+j] += A[i*N+k] * B[k*N+j];
+\end{lstlisting}
+
+Mismas condiciones: \(N = 1800\), 1 núcleo (\texttt{taskset -c 0}), BS=75. Se compararon la variante bloqueada con orden de bloques \texttt{ii,jj,kk}, la variante con orden \texttt{ii,kk,jj} (reutiliza el bloque de A en caché) y la lineal ikj.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Versión} & \textbf{Tiempo (ms)} & \textbf{MFLOPS} \\
+\midrule
+Bloqueado (ii,jj,kk) & 2302 & 2533 \\
+Bloqueado (ii,kk,jj) & 3043 & 1917 \\
+Lineal ikj           & 3040 & 1919 \\
+\bottomrule
+\end{tabular}
+\caption{Comparación orden de bloques y lineal ikj (\(N=1800\), BS=75, 1 núcleo).}
+\label{tab:compare}
+\end{table}
+
+En estas corridas el bloqueado con orden \texttt{ii,jj,kk} fue el más rápido (\(\approx 2533\) MFLOPS), coherente con la tabla de la sección~2.1 (BS=75 óptimo). El orden \texttt{ii,kk,jj} y la ikj quedaron en \(\approx 1917\)--1919 MFLOPS. El orden \texttt{ii,kk,jj} reutiliza el bloque de A en caché pero en esta medición no superó a \texttt{ii,jj,kk}. La ikj tiene buena localidad (fila de A, columna de B, fila de C); el bloqueado con BS óptimo puede ganar cuando \(N\) es múltiplo de \(BS\) y no hay overhead de bloques parciales.
+
+\textbf{Problemas de la variante a bloques:} (1) Overhead de los tres loops de bloques y de las fronteras cuando \(N\) no es múltiplo de BS. (2) Al saltar entre bloques, el patrón de acceso es menos regular y el prefetcher puede ser menos efectivo. (3) El orden \texttt{ii,jj,kk} no maximiza la reutilización del bloque de A en caché. (4) Mayor complejidad de código sin garantía de ganancia si no se refina (p.~ej. packing).
+
+\textbf{Mejoras sencillas:} (1) \textbf{Reordenar los loops de bloques} a \texttt{ii, kk, jj}: así el bloque de A (filas ii, columnas kk) se mantiene en caché mientras se recorren todos los bloques jj, mejorando la reutilización (probado en la tabla anterior). (2) \textbf{Packing:} copiar cada bloque a un buffer contiguo antes de operar. (3) Mantener el orden interno ikj (ya está). (4) Ajustar BS según la jerarquía de caché (ya hecho con BS=75 para \(N=1800\)).
+
