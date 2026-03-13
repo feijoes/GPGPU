@@ -74,3 +74,48 @@ En estas corridas el bloqueado con orden \texttt{ii,jj,kk} fue el más rápido (
 
 \textbf{Mejoras sencillas:} (1) \textbf{Reordenar los loops de bloques} a \texttt{ii, kk, jj}: así el bloque de A (filas ii, columnas kk) se mantiene en caché mientras se recorren todos los bloques jj, mejorando la reutilización (probado en la tabla anterior). (2) \textbf{Packing:} copiar cada bloque a un buffer contiguo antes de operar. (3) Mantener el orden interno ikj (ya está). (4) Ajustar BS según la jerarquía de caché (ya hecho con BS=75 para \(N=1800\)).
 
+
+
+
+
+
+
+
+
+Esto puede explicarse porque la versión lineal \texttt{ikj} ya presenta un patrón de acceso muy favorable a la jerarquía de memoria: reutiliza el valor \texttt{A[i*N + k]} y recorre de forma contigua tanto una fila de \texttt{B} como una fila de \texttt{C}. En este contexto, la técnica de bloqueo no aporta una ventaja suficiente como para compensar completamente el costo extra de los loops adicionales y del cálculo de índices. Dicho de otro modo, la variante por bloques enfrenta un \emph{overhead} adicional que, si no se reduce, puede anular parte del beneficio esperado por localidad.
+
+A partir de esta idea, se realizó una mejora adicional sobre la versión \texttt{(ii,kk,jj)}. Se observó que el valor \texttt{A[i*N + k]} no depende de \texttt{j}, por lo que no tiene sentido volver a leerlo en cada iteración del loop interno. Por eso, se decidió extraerlo fuera del loop sobre \texttt{j}, almacenándolo en una variable temporal \texttt{aik}. La versión utilizada fue la siguiente:
+
+\begin{verbatim}
+static void matrix_mult_blocks_better(float* A, float* B, float* C, int N, int BS) {
+    for (int ii = 0; ii < N; ii += BS)
+        for (int kk = 0; kk < N; kk += BS)
+            for (int jj = 0; jj < N; jj += BS)
+                for (int i = ii; i < ii + BS; i++)
+                    for (int k = kk; k < kk + BS; k++) {
+                        float aik = A[i * N + k];
+                        for (int j = jj; j < jj + BS; j++)
+                            C[i * N + j] += aik * B[k * N + j];
+                    }
+}
+\end{verbatim}
+
+La Tabla~\ref{tab:comparacion_mejorada} presenta el promedio de cinco ejecuciones incluyendo esta nueva variante.
+
+\begin{table}[ht]
+\centering
+\caption{Promedio de cinco ejecuciones incluyendo la versión bloqueada mejorada.}
+\label{tab:comparacion_mejorada}
+\begin{tabular}{|l|r|r|}
+\hline
+Versión & Tiempo promedio (ms) & MFLOPS promedio \\ \hline
+Bloqueado \texttt{(ii,jj,kk)} & 12882.33 & 453.89 \\ \hline
+Bloqueado \texttt{(ii,kk,jj)} & 11851.43 & 492.19 \\ \hline
+Bloqueado \texttt{(ii,kk,jj)} better & 9720.68 & 600.04 \\ \hline
+Lineal \texttt{ikj} & 10384.74 & 561.72 \\ \hline
+\end{tabular}
+\end{table}
+
+En este caso, la mejora sí fue significativa. La variante \texttt{better} superó no solo a las otras dos versiones bloqueadas, sino también a la lineal \texttt{ikj}. Esto sugiere que, en la práctica, no alcanza con elegir un buen orden de loops: también es importante reducir accesos redundantes a memoria y evitar cálculos repetidos dentro del loop más interno. Al mover la lectura de \texttt{A[i*N + k]} fuera del loop sobre \texttt{j}, se favorece la reutilización en registros y se disminuye el costo de acceso a memoria dentro del núcleo del cálculo.
+
+En síntesis, la lectura del código permitió entender por qué \texttt{ikj} era mejor que \texttt{ijk}, y esa misma intuición guió la reorganización de la versión por bloques. El reordenamiento \texttt{ii,kk,jj,i,k,j} por sí solo mejoró el desempeño, pero no fue suficiente para superar a la versión lineal. Recién al combinar ese orden con una reducción explícita de accesos redundantes a \texttt{A}, mediante la variable temporal \texttt{aik}, la versión bloqueada logró explotar mejor la localidad y obtener el mejor rendimiento medido.

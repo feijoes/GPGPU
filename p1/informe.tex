@@ -94,7 +94,7 @@ En resumen, el experimento demuestra que el \textbf{orden de acceso a los datos}
 
 Para tres matrices de tamaño mayor que la capacidad de la caché de último nivel (LLC), se busca el tamaño de bloque \texttt{BS} que maximice el rendimiento (MFLOPS) en la multiplicación por bloques 
 
-Se usó \(N = 1800\), de modo que las tres matrices suman \(3 \times 1800^2 \times 4\,\text{B} \approx 38{,}7\,\text{MB} > 33\,\text{MB}\) (LLC). Dado \(N\), conviene restringir \texttt{BS} a divisores de \(N\): si no, aparecen bloques parciales en los bordes, el código debe comprobar \texttt{i < N} en cada iteración interna y el rendimiento empeora. Se hizo un barrido con \texttt{BS\_min=10}, \texttt{BS\_max=100}, \texttt{BS\_step=5} (solo divisores de 1800 en ese rango alineados al step). MFLOPS definidos como \(N^3 / (\text{segundos} \times 10^6)\). En la tabla se reportan tiempo y MFLOPS de una corrida.
+Se usó \(N = 1800\), de modo que las tres matrices suman \(3 \times 1800^2 \times 4\,\text{B} \approx 37\,\text{MB} > 33\,\text{MB}\) (LLC). Dado \(N\), conviene restringir \texttt{BS} a divisores de \(N\): si no, aparecen bloques parciales en los bordes, el código debe comprobar \texttt{i < N} en cada iteración interna y el rendimiento empeora. Se hizo un barrido con \texttt{BS\_min=10}, \texttt{BS\_max=200}, \texttt{BS\_step=5} (solo divisores de 1800 en ese rango alineados al step). MFLOPS definidos como \(N^3 / (\text{segundos} \times 10^6)\). Se ejecutó el script cinco veces y se promedió el tiempo para que los resultados sean más representativos; en la tabla se reportan el tiempo medio y los MFLOPS correspondientes.
 
 \begin{table}[H]
 \centering
@@ -102,25 +102,29 @@ Se usó \(N = 1800\), de modo que las tres matrices suman \(3 \times 1800^2 \tim
 \toprule
 \textbf{BS} & \textbf{Tiempo (ms)} & \textbf{MFLOPS} \\
 \midrule
-10  & 16758.81 & 348.00  \\
-15  & 16528.05 & 352.85  \\
-20  & 16190.45 & 360.21  \\
-25  & 15995.28 & 364.61  \\
-30  & 15798.75 & 369.14  \\
-40  & 15631.26 & 373.10  \\
-45  & 15406.50 & 378.54  \\
-50  & 15344.71 & 380.07  \\
-60  & 15162.82 & \textbf{384.63} \\
-75  & 15432.26 & 377.91  \\
-90  & 15201.63 & 383.64  \\
-100 & 15489.32 & 376.52  \\
+10  & 13435.15 & 434.88  \\
+15  & 13974.39 & 419.80  \\
+20  & 13113.64 & 445.58  \\
+25  & 12853.51 & 455.57  \\
+30  & 13169.35 & 448.87  \\
+40  & 12333.37 & 473.44  \\
+45  & 12061.91 & \textbf{483.76} \\
+50  & 12626.59 & 466.62  \\
+60  & 13343.88 & 447.47  \\
+75  & 12831.52 & 456.62  \\
+90  & 12561.28 & 466.65  \\
+100 & 12460.90 & 468.37  \\
+120 & 12495.35 & 467.02  \\
+150 & 12911.25 & 452.81  \\
+180 & 12332.53 & 474.40  \\
+200 & 12992.69 & 451.10  \\
 \bottomrule
 \end{tabular}
-\caption{Rendimiento para distintos \texttt{BS} divisores de \(N\) (\(N=1800\), BS\_min=10, BS\_max=100, BS\_step=5, 1 núcleo, \(-O0\)).}
+\caption{Rendimiento para distintos \texttt{BS} divisores de \(N\) (\(N=1800\), BS\_min=10, BS\_max=200, BS\_step=5, 1 núcleo, \(-O0\)).}
 \label{tab:bs}
 \end{table}
 
-El \textbf{BS óptimo} en este barrido resultó \textbf{60}, con \(\approx 384{,}6\) MFLOPS (tiempo \(\approx 15\,163\) ms).
+El \textbf{BS óptimo} en promedio resultó \textbf{45},  Y el BS optmimo de la cinco corridas fueron (45, 60, 90, 60, 60), el promedio de esos mejores BS es 63 y el de los MFLOPS correspondientes 488{,}04. Aunque BS=60 fue el mejor en 3 de 5 corridas, el promedio global favorece a 45 porque en una corrida BS=60 cayó mucho (334{,}71 MFLOPS), lo que baja bastante su media.
 
 \subsection{Comparación con lo esperado teóricamente}
 
@@ -130,22 +134,75 @@ Con la jerarquía de caché ya descrita en la sección~1, se puede estimar un \t
 12\,BS^2 \leq 48\,\text{KiB} \quad \Rightarrow \quad BS \lesssim \sqrt{\frac{48 \cdot 1024}{12}} \approx 64.
 \]
 
-Con 32\,KiB se obtendría \(BS \approx 52\). Así, el rango teórico esperado es \texttt{BS} en torno a 50--65. El valor experimental óptimo, \texttt{BS = 60}, cae dentro de ese rango y es coherente con la estimación.
-
-Posibles desvíos entre teoría y práctica se explican porque el modelo es idealizado: no toda la caché se dedica solo a los tres bloques (también hay instrucciones, pila y otras estructuras); el acceso a \(B\) por columnas no siempre tiene localidad óptima; y además influyen la asociatividad, la política de reemplazo, el prefetching y el coste extra de los bucles de bloqueo. En conjunto, el \texttt{BS} medido resulta consistente con lo esperado a partir de los tamaños de caché indicados al inicio.
+Posibles desvíos entre teoría y práctica se explican porque el modelo es idealizado: no toda la caché (L1) se dedica solo a los tres bloques, esta ocupada por otras líneas de caché activas , pila y otras estructuras; y  el acceso a \(B[kN+j]\) por columnas no siempre tiene localidad óptima; y además influyen la asociatividad, la política de reemplazo, el prefetching y el coste extra de los bucles de bloqueo. En conjunto, los resultados experimentales no coinciden exactamente con la estimación teórica: el mejor promedio se obtuvo con \texttt{BS = 45}. Sin embargo, \texttt{BS = 60} también mostró un desempeño muy competitivo y fue el mejor en varias ejecuciones, por lo que los resultados siguen siendo compatibles, de manera aproximada, con la predicción basada en la jerarquía de caché
 
 \subsection{Ejercicio 2.2 --- Variante lineal ikj y orden de los bucles por bloques}
 
-Se consideró la variante \textbf{lineal} que multiplica las matrices con orden de bucles \texttt{i}, \texttt{k}, \texttt{j} (ikj), sin bloques:
+\subsection{Comparación entre la versión lineal y la versión por bloques}
 
-\begin{lstlisting}[caption={Variante lineal ikj}]
-for (i = 0; i < N; i++)
-    for (k = 0; k < N; k++)
-        for (j = 0; j < N; j++)
-            C[i*N+j] += A[i*N+k] * B[k*N+j];
-\end{lstlisting}
+Al inspeccionar el código de la multiplicación lineal, se observa que el orden de loops \texttt{ikj} es más conveniente que \texttt{ijk} para matrices almacenadas en \emph{row-major}. La razón principal es que, con \texttt{ikj}, el índice \texttt{j} queda en el loop más interno, por lo que tanto \texttt{B[k*N + j]} como \texttt{C[i*N + j]} se recorren de forma contigua en memoria. Además, el valor \texttt{A[i*N + k]} se carga una sola vez y se reutiliza para todas las posiciones de \texttt{j}. En cambio, con el orden \texttt{ijk}, el índice \texttt{k} queda en el loop interno, de modo que el acceso a \texttt{B[k*N + j]} avanza por columnas de \texttt{B}, lo cual implica un \emph{stride} de tamaño \(N\) y, por tanto, una peor localidad espacial.
 
-Esta variante tiene buena localidad: se recorre la fila \(i\) de \(A\), la columna \(k\) de \(B\) y la fila \(i\) de \(C\). En una ejecución con \(N=1800\), 1 núcleo y compilación \(-O0\), se obtuvo un tiempo de \(\approx 13\,123\) ms y \(\approx 444\) MFLOPS (comando \texttt{./matmul\_blocks 1800 compare}).
+A partir de esta observación, nuestro grupo intentó trasladar la misma idea a la versión bloqueada. En lugar del orden original \texttt{ii,jj,kk,i,j,k}, se probó reordenar los loops como \texttt{ii,kk,jj,i,k,j}, buscando que dentro de cada bloque el recorrido mantuviera a \texttt{j} como índice interno, igual que en la versión lineal \texttt{ikj}.
 
-Conviene además comparar con la versión por bloques cambiando el \textbf{orden de los bucles de bloques}. En la versión bloqueada estándar el orden es \texttt{ii}, \texttt{jj}, \texttt{kk}. Una alternativa es \texttt{ii}, \texttt{kk}, \texttt{jj}: así el bloque de \(A\) (filas \texttt{ii}, columnas \texttt{kk}) se reutiliza en caché mientras se recorren todos los bloques \texttt{jj}, lo que puede mejorar la localidad. Se sugiere ejecutar \texttt{./matmul\_blocks 1800 compare 60} y contrastar los tiempos y MFLOPS de ``Bloqueado (ii,jj,kk)'', ``Bloqueado (ii,kk,jj)'' y ``Lineal ikj'' para ver el efecto del orden de los bloques y de la variante lineal.
+La Tabla~\ref{tab:comparacion_tres} muestra el promedio de cinco ejecuciones para la versión bloqueada original, la versión bloqueada con loops reordenados y la versión lineal. En todos los casos se utilizó \(N=1800\), con \(BS=45\), fijando la ejecución a un único núcleo mediante \texttt{taskset -c 0}.
+
+\begin{table}[ht]
+\centering
+\caption{Promedio de cinco ejecuciones: comparación entre la versión bloqueada original, la bloqueada reordenada y la lineal.}
+\label{tab:comparacion_tres}
+\begin{tabular}{|l|r|r|}
+\hline
+Versión & Tiempo promedio (ms) & MFLOPS promedio \\ \hline
+Bloqueado \texttt{(ii,jj,kk)} & 12882.33 & 453.89 \\ \hline
+Bloqueado \texttt{(ii,kk,jj)} & 11851.43 & 492.19 \\ \hline
+Lineal \texttt{ikj} & 10384.74 & 561.72 \\ \hline
+\end{tabular}
+\end{table}
+
+Los resultados muestran que el simple reordenamiento de loops en la variante bloqueada sí mejora el desempeño respecto de la versión bloqueada original. En promedio, \texttt{(ii,kk,jj)} reduce el tiempo de ejecución y aumenta el rendimiento en MFLOPS frente a \texttt{(ii,jj,kk)}. Sin embargo, aun con esa mejora, la variante lineal \texttt{ikj} sigue siendo superior.
+
+\subsection{Ejercicio 2.3 --- Comparación de órdenes de loop lineales}
+
+Se comparó el tiempo de ejecución y el rendimiento en MFLOPS (\(N^3 / (\text{segundos} \times 10^6)\)) de la versión \emph{lineal} (sin bloques) del producto de matrices para los seis órdenes de loop posibles: \texttt{ijk}, \texttt{jik}, \texttt{ikj}, \texttt{kij}, \texttt{jki} y \texttt{kji}. Se utilizaron los tamaños de matriz 32, 128, 256, 260, 512, 550, 1024 y 1050, ejecutando cada combinación cuatro veces y promediando los MFLOPS para reducir la variabilidad. La Tabla~\ref{tab:loops} resume los resultados.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}rcccccc|c@{}}
+\toprule
+\textbf{N} & \textbf{ijk} & \textbf{jik} & \textbf{ikj} & \textbf{kij} & \textbf{jki} & \textbf{kji} & \textbf{Prom. N} \\
+\midrule
+32   & 510.25 & 504.75 & \textbf{603.00} & 516.00 & 506.25 & 500.00 & 522.21 \\
+128  & 523.00 & 517.75 & \textbf{669.00} & 566.00 & 501.25 & 498.25 & 545.88 \\
+256  & 525.00 & 510.00 & \textbf{658.25} & 531.25 & 449.00 & 435.25 & 518.29 \\
+260  & 483.25 & 482.75 & \textbf{630.25} & 525.00 & 494.25 & 488.25 & 517.29 \\
+512  & 471.00 & 470.75 & \textbf{633.75} & 547.00 & 414.00 & 418.50 & 492.38 \\
+550  & 486.75 & 490.75 & \textbf{584.25} & 502.00 & 413.00 & 397.50 & 479.04 \\
+1024 & 301.00 & 282.50 & \textbf{633.50} & 566.25 & 193.50 & 181.00 & 359.63 \\
+1050 & 410.50 & 450.75 & \textbf{642.75} & 520.00 & 321.50 & 336.75 & 447.04 \\
+\midrule
+Promedio total & 408.78 & 461.28 & \textbf{631.09} & 534.19 & 411.59 & 408.19 & 482.72 \\
+\bottomrule
+\end{tabular}
+\caption{MFLOPS promedio (4 ejecuciones) de la versión lineal para distintos órdenes de loop (1 núcleo, \(-O0\)).}
+\label{tab:loops}
+\end{table}
+
+\begingroup
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.7em}
+\sloppy
+
+Los resultados obtenidos muestran una tendencia clara: las variantes \texttt{ikj} y \texttt{kij} son, en general, las de mejor desempeño, mientras que \texttt{jki} y \texttt{kji} resultan las peores, especialmente para tamaños grandes. Esto puede explicarse a partir del patrón de acceso a memoria y de la jerarquía de caché de la máquina utilizada.
+
+En esta arquitectura, los accesos contiguos por fila aprovechan mejor la localidad espacial: una línea de caché trae varios elementos consecutivos, que luego pueden reutilizarse antes de ser reemplazados. Por eso, cuando el índice \texttt{j} queda en el loop más interno, como en \texttt{ikj} y \texttt{kij}, se recorren de forma contigua las filas de \(B\) y \(C\), lo que permite un uso más eficiente de las líneas de caché.
+
+La variante \texttt{ikj} resulta, en promedio, la mejor. Como las matrices se almacenan por filas (como se comentó en clase), en este orden, para cada par \((i,k)\), el valor \(A[i,k]\) se lee una sola vez y se reutiliza durante todo el recorrido de \texttt{j}. Además, tanto \(B[k,j]\) como \(C[i,j]\) se recorren secuencialmente en memoria. Esto combina buena localidad espacial con reutilización temporal, y explica por qué su rendimiento se mantiene alto incluso cuando el tamaño del problema supera L1 y L2. La variante \texttt{kij} también deja a \texttt{j} en el loop interno, por lo que conserva un acceso contiguo favorable, aunque con menor reutilización local sobre \(C\) que \texttt{ikj}.
+
+En las variantes \texttt{ijk}, \texttt{jik}, \texttt{jki} y \texttt{kji}, el problema principal es que el loop interno obliga a recorrer por columnas, lo que empeora mucho la localidad espacial. En \texttt{ijk} y \texttt{jik}, esto afecta sobre todo a \(B[k,j]\), ya que al variar \texttt{k} se avanza por columnas de \(B\), produciendo saltos de tamaño \(N\). En \texttt{jki} y \texttt{kji}, la situación es todavía peor, porque al variar \texttt{i} se recorren por columnas tanto \(A[i,k]\) como \(C[i,j]\). En todos estos casos, el procesador trae líneas completas de caché de 64\,B, pero solo se aprovecha una pequeña parte antes de saltar a otra región lejana de memoria. Esto genera más misses de caché y una muy baja reutilización efectiva.
+
+También se observa que para tamaños pequeños, como \(N=32\), las diferencias entre órdenes existen pero son moderadas. Esto es razonable, ya que el conjunto de trabajo es pequeño y entra en L1. En cambio, para \(N=128\) el conjunto de trabajo ya supera L1 pero todavía entra en L2, y para \(N=256\), \(260\), \(512\), \(550\), \(1024\) y \(1050\) supera L2 pero entra en L3. A medida que el tamaño de las matrices deja de caber en los niveles más rápidos de caché, el costo de un mal patrón de acceso se vuelve mucho más visible, y por eso las diferencias entre órdenes crecen marcadamente.
+
+Un detalle interesante es la diferencia entre \(N=1024\) y \(N=1050\).
+
+\endgroup
 \end{document}

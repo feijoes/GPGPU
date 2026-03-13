@@ -1,0 +1,180 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\geometry{margin=2.5cm}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    language=C++,
+    keywordstyle=\bfseries,
+    commentstyle=\itshape
+}
+
+\title{Práctico 1 --- Patrones de acceso a memoria}
+\author{%
+  Pedro Calado Moura \quad Documento: 65092945\\
+  Kelvin Martinez \quad Documento: ---\\
+  Brandson \quad Documento: ---%
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+%==============================================================================
+\section{Plataforma computacional}
+%==============================================================================
+
+Todas las librerías de este trabajo se ejecutaron en un sistema operativo Linux con arquitectura de 64 bits en un procesador Intel(R) Core(TM) i7-14700HX (20 núcleos, 28 hilos lógicos) a una frecuencia base de 800 MHz y turbo de hasta 5,5 GHz, y una memoria RAM de 16 GB. Las mediciones se realizaron con \texttt{taskset -c 0} (un único núcleo), así el proceso no salta entre núcleos y los tiempos se interpretan mejor (una sola jerarquía de caché). \textbf{Todos los códigos utilizados para las mediciones fueron compilados sin optimizaciones} (\texttt{g++ -O0} o equivalente).
+
+\textbf{Jerarquía de caché} (salida de \texttt{lscpu -C}, por nivel y una instancia): todas las cachés son \textit{set-associative} (vías \(>1\), conjuntos \(>1\)). L1d (datos): 48\,KiB, 12 vías, 64 conjuntos, línea 64\,B. L1i (instrucciones): 32\,KiB, 8 vías, 64 conjuntos, línea 64\,B. L2 unificada: 2\,MiB, 16 vías, 2048 conjuntos, línea 64\,B. L3 unificada: 33\,MiB, 11 vías, 49\,152 conjuntos, línea 64\,B. Así, cada bloque de memoria se asigna a un conjunto concreto y puede ocupar cualquiera de las vías de ese conjunto.
+
+%==============================================================================
+\section{Ejercicio 1 --- Localidad espacial}
+%==============================================================================
+
+\subsection{Descripción}
+
+El ejercicio consiste en implementar dos recorridas sobre un arreglo de gran tamaño (100 MB de \texttt{char}) que visitan exactamente la misma cantidad de elementos, pero con patrones de acceso diferentes:
+
+\begin{enumerate}
+\item \textbf{Recorrida secuencial:} se visita el arreglo en orden (posición 0, 1, 2, \ldots).
+\item \textbf{Recorrida aleatoria:} se visitan las mismas posiciones pero en orden aleatorio.
+\end{enumerate}
+
+En ambos casos, el siguiente índice a visitar se obtiene leyendo de un arreglo de índices previamente inicializado. El objetivo es analizar el impacto de la \textbf{localidad espacial} en la jerarquía de memoria: el acceso secuencial explota la pre-carga de bloques contiguos en caché, mientras que el acceso aleatorio tiende a generar múltiples fallos de caché.
+
+\subsection{Resultados}
+
+El programa se ejecutó en un sistema con carga reducida. Ambas recorridas visitan exactamente \(100 \times 1024 \times 1024 = 104\,857\,600\) elementos.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Recorrida} & \textbf{Tiempo (ms)} \\
+\midrule
+Secuencial         & 260.535              \\
+Aleatoria          & 1703.62              \\
+\bottomrule
+\end{tabular}
+\caption{Ejercicio 1: tiempos de ejecución (1 núcleo).}
+\label{tab:tiempos}
+\end{table}
+
+La recorrida aleatoria resulta aproximadamente \textbf{6.5 veces más lenta} que la secuencial. La variabilidad entre ejecuciones se debe a factores como el estado de la caché al inicio y la carga del sistema.
+
+\subsection{Reflexión}
+
+La diferencia de rendimiento se explica por la \textbf{localidad espacial} y la jerarquía de memoria.
+
+\textbf{Acceso secuencial:} Cuando se accede a posiciones contiguas, la CPU aprovecha las \emph{cache lines} (bloques típicos de 64 bytes). Al leer una posición, se trae a L1/L2 todo el bloque contiguo; los accesos siguientes caen en caché sin necesidad de ir a memoria principal. El ancho de banda efectivo se maximiza.
+
+\textbf{Acceso aleatorio:} Cada acceso puede dirigirse a una dirección distante que no está en caché. Esto provoca un \emph{cache miss} frecuente: la CPU debe ir a RAM para traer el dato. La memoria principal es del orden de 100 veces más lenta que la caché L1, por lo que el tiempo total aumenta drásticamente a pesar de realizar la misma cantidad de operaciones.
+
+En resumen, el experimento demuestra que el \textbf{orden de acceso a los datos} afecta fuertemente el desempeño debido a la jerarquía de memoria. Los patrones de acceso que respetan la localidad espacial (como el secuencial) se benefician del caché y son significativamente más rápidos que los que dispersan los accesos por todo el espacio de direcciones.
+
+%==============================================================================
+\section{Ejercicio 2 --- Multiplicación por bloques}
+%==============================================================================
+
+\subsection{Ejercicio 2.1 --- Determinación experimental del BS óptimo}
+
+Para tres matrices de tamaño mayor que la capacidad de la caché de último nivel (LLC), se busca el tamaño de bloque \texttt{BS} que maximice el rendimiento (MFLOPS) en la multiplicación por bloques 
+
+Se usó \(N = 1800\), de modo que las tres matrices suman \(3 \times 1800^2 \times 4\,\text{B} \approx 38{,}7\,\text{MB} > 33\,\text{MB}\) (LLC). Dado \(N\), conviene restringir \texttt{BS} a divisores de \(N\): si no, aparecen bloques parciales en los bordes, el código debe comprobar \texttt{i < N} en cada iteración interna y el rendimiento empeora. Se hizo un barrido con \texttt{BS\_min=10}, \texttt{BS\_max=100}, \texttt{BS\_step=5} (solo divisores de 1800 en ese rango alineados al step). MFLOPS definidos como \(N^3 / (\text{segundos} \times 10^6)\). En la tabla se reportan tiempo y MFLOPS de una corrida.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}rcc@{}}
+\toprule
+\textbf{BS} & \textbf{Tiempo (ms)} & \textbf{MFLOPS} \\
+\midrule
+10  & 16758.81 & 348.00  \\
+15  & 16528.05 & 352.85  \\
+20  & 16190.45 & 360.21  \\
+25  & 15995.28 & 364.61  \\
+30  & 15798.75 & 369.14  \\
+40  & 15631.26 & 373.10  \\
+45  & 15406.50 & 378.54  \\
+50  & 15344.71 & 380.07  \\
+60  & 15162.82 & \textbf{384.63} \\
+75  & 15432.26 & 377.91  \\
+90  & 15201.63 & 383.64  \\
+100 & 15489.32 & 376.52  \\
+\bottomrule
+\end{tabular}
+\caption{Rendimiento para distintos \texttt{BS} divisores de \(N\) (\(N=1800\), BS\_min=10, BS\_max=100, BS\_step=5, 1 núcleo, \(-O0\)).}
+\label{tab:bs}
+\end{table}
+
+El \textbf{BS óptimo} en este barrido resultó \textbf{60}, con \(\approx 384{,}6\) MFLOPS (tiempo \(\approx 15\,163\) ms).
+
+\subsection{Comparación con lo esperado teóricamente}
+
+Con la jerarquía de caché ya descrita en la sección~1, se puede estimar un \texttt{BS} teórico. Para que la multiplicación por bloques aproveche la caché, conviene que los tres bloques activos (de \(A\), \(B\) y \(C\)) quepan a la vez. Con \texttt{float} (4\,B por elemento), el tamaño total es \(3 \cdot BS^2 \cdot 4 = 12\,BS^2\) bytes. Usando como referencia la L1d por núcleo (48\,KiB según \texttt{lscpu -C}):
+
+\[
+12\,BS^2 \leq 48\,\text{KiB} \quad \Rightarrow \quad BS \lesssim \sqrt{\frac{48 \cdot 1024}{12}} \approx 64.
+\]
+
+Con 32\,KiB se obtendría \(BS \approx 52\). Así, el rango teórico esperado es \texttt{BS} en torno a 50--65. El valor experimental óptimo, \texttt{BS = 60}, cae dentro de ese rango y es coherente con la estimación.
+
+Posibles desvíos entre teoría y práctica se explican porque el modelo es idealizado: no toda la caché se dedica solo a los tres bloques (también hay instrucciones, pila y otras estructuras); el acceso a \(B\) por columnas no siempre tiene localidad óptima; y además influyen la asociatividad, la política de reemplazo, el prefetching y el coste extra de los bucles de bloqueo. En conjunto, el \texttt{BS} medido resulta consistente con lo esperado a partir de los tamaños de caché indicados al inicio.
+
+\subsection{Ejercicio 2.2 --- Variante lineal ikj y orden de los bucles por bloques}
+
+Se consideró la variante \textbf{lineal} que multiplica las matrices con orden de bucles \texttt{i}, \texttt{k}, \texttt{j} (ikj), sin bloques:
+
+\begin{lstlisting}[caption={Variante lineal ikj}]
+for (i = 0; i < N; i++)
+    for (k = 0; k < N; k++)
+        for (j = 0; j < N; j++)
+            C[i*N+j] += A[i*N+k] * B[k*N+j];
+\end{lstlisting}
+
+Esta variante tiene buena localidad: se recorre la fila \(i\) de \(A\), la columna \(k\) de \(B\) y la fila \(i\) de \(C\). En una ejecución con \(N=1800\), 1 núcleo y compilación \(-O0\), se obtuvo un tiempo de \(\approx 13\,123\) ms y \(\approx 444\) MFLOPS (comando \texttt{./matmul\_blocks 1800 compare}).
+
+Conviene además comparar con la versión por bloques cambiando el \textbf{orden de los bucles de bloques}. En la versión bloqueada estándar el orden es \texttt{ii}, \texttt{jj}, \texttt{kk}. Una alternativa es \texttt{ii}, \texttt{kk}, \texttt{jj}: así el bloque de \(A\) (filas \texttt{ii}, columnas \texttt{kk}) se reutiliza en caché mientras se recorren todos los bloques \texttt{jj}, lo que puede mejorar la localidad. Se sugiere ejecutar \texttt{./matmul\_blocks 1800 compare 60} y contrastar los tiempos y MFLOPS de ``Bloqueado (ii,jj,kk)'', ``Bloqueado (ii,kk,jj)'' y ``Lineal ikj'' para ver el efecto del orden de los bloques y de la variante lineal.
+
+Al comparar la versión bloqueada utilizando el tamaño de bloque óptimo obtenido experimentalmente con la variante lineal \texttt{ikj}, se puede observar que la versión lineal alcanzó un rendimiento superior.
+
+Esto puede explicarse porque la variante lineal \texttt{ikj} presenta un patrón de acceso a memoria más favorable. En particular, el valor \texttt{A[i*N+k]} se reutiliza muchas veces dentro del bucle interno. Además, las posiciones \texttt{C[i*N+j]} y \texttt{B[k*N+j]} se recorren de forma contigua en memoria. Estos dos aspectos favorecen la localidad espacial y permiten un mejor aprovechamiento de las líneas de caché.
+
+En el caso de la variante por bloques, una diferencia importante es el orden de los bucles. Mientras que en la versión lineal el orden es \texttt{ikj}, en la implementación bloqueada se utiliza el orden de bloques \texttt{ii, jj, kk} junto con bucles internos \texttt{i, j, k}. Esto puede generar patrones de acceso menos eficientes para algunos arreglos. Por ejemplo, el acceso a \texttt{B[k*N+j]} puede provocar una mayor cantidad de \textit{cache miss}, ya que al cambiar el valor de \texttt{k} se accede a posiciones más alejadas en memoria.
+
+Además, la variante por bloques introduce bucles adicionales, lo que incrementa la cantidad de comparaciones, saltos y cálculos de índices. Si bien esto añade cierta sobrecarga, en este caso la diferencia de rendimiento observada parece estar más relacionada con el patrón de acceso a memoria que con el costo de los bucles adicionales.
+
+Una modificación sencilla que podría mejorar el desempeño consiste en cambiar el orden de los bucles para que pase a ser \texttt{ikj} a nivel interno y \texttt{ii, kk, jj} a nivel de bloques.
+
+\begin{lstlisting}[caption={Multiplicación por bloques con orden de bucles mejorado (ii, kk, jj)}]
+void matrix_mult (float *A, float *B, float *C, int N) {
+    int i, j, k, ii, jj, kk;
+
+    for (ii = 0; ii < N; ii += BS)
+        for (kk = 0; kk < N; kk += BS)
+            for (jj = 0; jj < N; jj += BS)
+                for (i = ii; i < ii + BS; i++)
+                    for (k = kk; k < kk + BS; k++)
+                        for (j = jj; j < jj + BS; j++)
+                            C[i*N + j] += A[i*N + k] * B[k*N + j];
+}
+\end{lstlisting}
+
+De esta forma se favorece una mejor reutilización de los datos en caché, ya que un mismo bloque de la matriz \(A\) puede reutilizarse mientras se recorren distintos bloques de \(B\). Esto mejora la localidad temporal y espacial de los accesos a memoria.
+
+\subsection{Ejercicio 2.3}
+
+\end{document}
