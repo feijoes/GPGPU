@@ -37,36 +37,7 @@ static void matrix_mult_blocks_ikkjj(float* A, float* B, float* C, int N, int BS
                         for (j = jj; j < jj + BS; j++)
                             C[i * N + j] += A[i * N + k] * B[k * N + j];
 }
-static void matrix_mult_blocks_better(float* A, float* B, float* C, int N, int BS) {
-    for (int ii = 0; ii < N; ii += BS)
-        for (int kk = 0; kk < N; kk += BS)
-            for (int jj = 0; jj < N; jj += BS)
-                for (int i = ii; i < ii + BS; i++)
-                    for (int k = kk; k < kk + BS; k++) {
-                        float aik = A[i * N + k];
-                        for (int j = jj; j < jj + BS; j++)
-                            C[i * N + j] += aik * B[k * N + j];
-                    }
-}
 
-void matmul_blocked_ikj_exact(const float* A, const float* B, float* C, int N, int BS) {
-    for (int ii = 0; ii < N; ii += BS) {
-        for (int kk = 0; kk < N; kk += BS) {
-            for (int jj = 0; jj < N; jj += BS) {
-                for (int i = ii; i < ii + BS; ++i) {
-                    float* Ci = &C[i * N];
-                    const float* Ai = &A[i * N];
-                    for (int k = kk; k < kk + BS; ++k) {
-                        float aik = Ai[k];
-                        const float* Bk = &B[k * N];
-                        for (int j = jj; j < jj + BS; ++j) {
-                            Ci[j] += aik * Bk[j];
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /* Variantes lineales (sin bloques): los 6 órdenes de loop i,j,k. */
@@ -86,9 +57,8 @@ static void matmul_ikj(float* A, float* B, float* C, int N) {
     for (int i = 0; i < N; i++)
         for (int k = 0; k < N; k++)
             {
-                float aik = A[i * N + k];
             for (int j = 0; j < N; j++)
-                C[i * N + j] += aik * B[k * N + j];
+                C[i * N + j] += A[i * N + k]; * B[k * N + j];
             }
 }
 static void matmul_kij(float* A, float* B, float* C, int N) {
@@ -267,14 +237,6 @@ int main(int argc, char** argv) {
             double ms_ikkjj = std::chrono::duration<double, std::milli>(end - start).count();
             double mflops_ikkjj = n3 / (ms_ikkjj / 1000.0 * 1e6);
             std::cout << "Bloqueado (ii,kk,jj)\ttiempo_ms=" << ms_ikkjj << "\tMFLOPS=" << mflops_ikkjj << "\n";
-
-            std::memset(C, 0, bytes);
-            start = std::chrono::high_resolution_clock::now();
-            matrix_mult_blocks_better(A, B, C, N, BS_OPT);
-            end = std::chrono::high_resolution_clock::now();
-            double ms_better = std::chrono::duration<double, std::milli>(end - start).count();
-            double mflops_better = n3 / (ms_better / 1000.0 * 1e6);
-            std::cout << "Bloqueado (ii,kk,jj) better\ttiempo_ms=" << ms_better << "\tMFLOPS=" << mflops_better << "\n";
         }
 
         std::memset(C, 0, bytes);
