@@ -102,29 +102,29 @@ Se usó \(N = 1800\), de modo que las tres matrices suman \(3 \times 1800^2 \tim
 \toprule
 \textbf{BS} & \textbf{Tiempo (ms)} & \textbf{MFLOPS} \\
 \midrule
-10  & 13435.15 & 434.88  \\
-15  & 13974.39 & 419.80  \\
-20  & 13113.64 & 445.58  \\
-25  & 12853.51 & 455.57  \\
-30  & 13169.35 & 448.87  \\
-40  & 12333.37 & 473.44  \\
-45  & 12061.91 & \textbf{483.76} \\
-50  & 12626.59 & 466.62  \\
-60  & 13343.88 & 447.47  \\
-75  & 12831.52 & 456.62  \\
-90  & 12561.28 & 466.65  \\
-100 & 12460.90 & 468.37  \\
-120 & 12495.35 & 467.02  \\
-150 & 12911.25 & 452.81  \\
-180 & 12332.53 & 474.40  \\
-200 & 12992.69 & 451.10  \\
+10  & 28103.51 & 112028.64 \\
+15  & 54876.19 & 2589.97  \\
+20  & 1770.25  & 127163.35 \\
+25  & 1776.99  & 3294.11  \\
+30  & 1833.94  & 103510.60 \\
+40  & 1755.53  & \textbf{150049.45} \\
+45  & 1977.53  & 135309.93 \\
+50  & 1686.88  & 3466.36  \\
+60  & 1734.52  & 112654.95 \\
+75  & 1737.04  & 117973.15 \\
+90  & 6553.47  & 66602.66  \\
+100 & 2034.93  & 74266.93  \\
+120 & 2341.09  & 2491.54  \\
+150 & 2431.43  & 2399.55  \\
+180 & 77138.57 & 2376.22  \\
+200 & 75680.94 & 2332.83  \\
 \bottomrule
 \end{tabular}
 \caption{Rendimiento para distintos \texttt{BS} divisores de \(N\) (\(N=1800\), BS\_min=10, BS\_max=200, BS\_step=5, 1 núcleo, \(-O0\)).}
 \label{tab:bs}
 \end{table}
 
-El \textbf{BS óptimo} en promedio resultó \textbf{45},  Y el BS optmimo de la cinco corridas fueron (45, 60, 90, 60, 60), el promedio de esos mejores BS es 63 y el de los MFLOPS correspondientes 488{,}04. Aunque BS=60 fue el mejor en 3 de 5 corridas, el promedio global favorece a 45 porque en una corrida BS=60 cayó mucho (334{,}71 MFLOPS), lo que baja bastante su media.
+El \textbf{BS óptimo} en promedio resultó \textbf{40},  Y el BS optmimo de la cinco corridas fueron (40, 50, 50, 20, 50), el promedio de esos mejores BS es 42 y el de los MFLOPS correspondientes 488{,}04. Cunque BS=50 fue el mejor en 3 de 5 corridas, el promedio global favorece a 40 porque en una corrida BS=40 cayó mucho, lo que baja bastante su media.
 
 \subsection{Comparación con lo esperado teóricamente}
 
@@ -153,9 +153,9 @@ La Tabla~\ref{tab:comparacion_tres} muestra el promedio de cinco ejecuciones par
 \begin{tabular}{|l|r|r|}
 \hline
 Versión & Tiempo promedio (ms) & MFLOPS promedio \\ \hline
-Bloqueado \texttt{(ii,jj,kk)} & 12882.33 & 453.89 \\ \hline
-Bloqueado \texttt{(ii,kk,jj)} & 11851.43 & 492.19 \\ \hline
-Lineal \texttt{ikj} & 10384.74 & 561.72 \\ \hline
+Bloqueado \texttt{(ii,jj,kk)} & 1903.15 & 3064.45 \\ \hline
+Bloqueado \texttt{(ii,kk,jj)} & 498.23 & 11777.35 \\ \hline
+Lineal \texttt{ikj} & 753.57 & 7897.43 \\ \hline
 \end{tabular}
 \end{table}
 
@@ -171,16 +171,16 @@ Se comparó el tiempo de ejecución y el rendimiento en MFLOPS (\(N^3 / (\text{s
 \toprule
 \textbf{N} & \textbf{ijk} & \textbf{jik} & \textbf{ikj} & \textbf{kij} & \textbf{jki} & \textbf{kji} & \textbf{Prom. N} \\
 \midrule
-32   & 510.25 & 504.75 & \textbf{603.00} & 516.00 & 506.25 & 500.00 & 522.21 \\
-128  & 523.00 & 517.75 & \textbf{669.00} & 566.00 & 501.25 & 498.25 & 545.88 \\
-256  & 525.00 & 510.00 & \textbf{658.25} & 531.25 & 449.00 & 435.25 & 518.29 \\
-260  & 483.25 & 482.75 & \textbf{630.25} & 525.00 & 494.25 & 488.25 & 517.29 \\
-512  & 471.00 & 470.75 & \textbf{633.75} & 547.00 & 414.00 & 418.50 & 492.38 \\
-550  & 486.75 & 490.75 & \textbf{584.25} & 502.00 & 413.00 & 397.50 & 479.04 \\
-1024 & 301.00 & 282.50 & \textbf{633.50} & 566.25 & 193.50 & 181.00 & 359.63 \\
-1050 & 410.50 & 450.75 & \textbf{642.75} & 520.00 & 321.50 & 336.75 & 447.04 \\
+32   & 1922.50 & 3666.50 & 9758.00  & \textbf{9886.25}  & 3595.75 & 3217.50 & 5341.08 \\
+128  & 2243.25 & 2115.25 & 9336.75  & \textbf{12493.50} &  784.50 &  778.00 & 4625.21 \\
+256  & 2029.50 & 1998.75 & 10274.75 & \textbf{12224.00} &  575.50 &  568.50 & 4611.83 \\
+260  & 2575.25 & 2482.50 & 9338.25  & \textbf{11127.50} & 1981.75 & 1966.75 & 4912.00 \\
+512  & 1469.25 & 1461.75 & 9990.25  & \textbf{10052.75} &  453.50 &  462.50 & 3981.67 \\
+550  & 2284.00 & 2240.25 & 9863.50  & \textbf{10006.00} &  974.75 &  967.75 & 4389.38 \\
+1024 &  368.75 &  369.75 & \textbf{9276.50}  &  8470.50 &  173.50 &  176.50 & 3139.25 \\
+1050 & 1567.50 & 1964.50 & \textbf{8882.75}  &  8638.00 &  479.75 &  496.75 & 3671.54 \\
 \midrule
-Promedio total & 408.78 & 461.28 & \textbf{631.09} & 534.19 & 411.59 & 408.19 & 482.72 \\
+Promedio total & 1807.50 & 2037.41 & 9590.09 & \textbf{10362.31} & 1127.38 & 1079.28 & 4333.99 \\
 \bottomrule
 \end{tabular}
 \caption{MFLOPS promedio (4 ejecuciones) de la versión lineal para distintos órdenes de loop (1 núcleo, \(-O0\)).}

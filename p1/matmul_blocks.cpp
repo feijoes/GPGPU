@@ -38,7 +38,7 @@ static void matrix_mult_blocks_ikkjj(float* A, float* B, float* C, int N, int BS
                             C[i * N + j] += A[i * N + k] * B[k * N + j];
 }
 
-}
+
 
 /* Variantes lineales (sin bloques): los 6 órdenes de loop i,j,k. */
 static void matmul_ijk(float* A, float* B, float* C, int N) {
@@ -56,10 +56,8 @@ static void matmul_jik(float* A, float* B, float* C, int N) {
 static void matmul_ikj(float* A, float* B, float* C, int N) {
     for (int i = 0; i < N; i++)
         for (int k = 0; k < N; k++)
-            {
             for (int j = 0; j < N; j++)
-                C[i * N + j] += A[i * N + k]; * B[k * N + j];
-            }
+                C[i * N + j] += A[i * N + k] * B[k * N + j];
 }
 static void matmul_kij(float* A, float* B, float* C, int N) {
     for (int k = 0; k < N; k++)
@@ -210,7 +208,7 @@ int main(int argc, char** argv) {
     fill_random(B, total);
 
     bool compare_mode = (argc >= 3 && std::string(argv[2]) == "compare");
-    int BS_OPT = 45;  /* valor por defecto: ./matmul_blocks N compare [BS]; 60 = óptimo típico para N=1800 */
+    int BS_OPT = 40;  /* valor por defecto: ./matmul_blocks N compare [BS]; 60 = óptimo típico para N=1800 */
     if (argc >= 4 && compare_mode)
         BS_OPT = std::atoi(argv[3]);
 
