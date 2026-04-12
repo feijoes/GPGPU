@@ -18,7 +18,7 @@ __device__ int modulo(int a, int b){
 	return r;
 }
 __device__ bool pertenece_submatriz(int fila, int columna, int tam_x, int tam_y) {
-    return fila <= tam_y && columna < tam_x;
+    return fila <= tam_y && columna <= tam_x;
 }
 
 __global__ void procesarMatriz_unidimensional(int* A, int N, int i1, int j1, int i2, int j2, int val) { 
@@ -26,7 +26,7 @@ __global__ void procesarMatriz_unidimensional(int* A, int N, int i1, int j1, int
 
     int tam_x = j2 - j1 + 1;
     int tam_y = i2 - i1 + 1;
-    
+   
     int fila = i1 + id / tam_x;
     int columna = j1 + modulo(id, tam_y);
     
@@ -107,9 +107,7 @@ int main(int argc, char* argv[]) {
     CUDA_CHK(cudaEventCreate(&stop));
     
     if (grilla == 1) {
-
         int tam_bloque = 256;
-
         dim3 blockSize(tam_bloque, 1);
         if (tam_submatriz % tam_bloque == 0 ){
             num_bloques = tam_submatriz/tam_bloque;
@@ -159,8 +157,6 @@ int main(int argc, char* argv[]) {
         procesarMatriz_bidimensional<<<gridSize, blockSize>>>(d_A, N, i1, j1, i2, j2, val);
         CUDA_CHK(cudaEventRecord(stop));
     }
-    
-    CUDA_CHK(cudaEventRecord(stop));
     CUDA_CHK(cudaEventSynchronize(stop));
     CUDA_CHK(cudaEventElapsedTime(&ms, start, stop));
     printf("Tiempo kernel: %f ms\n", ms);

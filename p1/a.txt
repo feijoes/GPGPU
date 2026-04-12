@@ -119,3 +119,136 @@ Lineal \texttt{ikj} & 10384.74 & 561.72 \\ \hline
 En este caso, la mejora sí fue significativa. La variante \texttt{better} superó no solo a las otras dos versiones bloqueadas, sino también a la lineal \texttt{ikj}. Esto sugiere que, en la práctica, no alcanza con elegir un buen orden de loops: también es importante reducir accesos redundantes a memoria y evitar cálculos repetidos dentro del loop más interno. Al mover la lectura de \texttt{A[i*N + k]} fuera del loop sobre \texttt{j}, se favorece la reutilización en registros y se disminuye el costo de acceso a memoria dentro del núcleo del cálculo.
 
 En síntesis, la lectura del código permitió entender por qué \texttt{ikj} era mejor que \texttt{ijk}, y esa misma intuición guió la reorganización de la versión por bloques. El reordenamiento \texttt{ii,kk,jj,i,k,j} por sí solo mejoró el desempeño, pero no fue suficiente para superar a la versión lineal. Recién al combinar ese orden con una reducción explícita de accesos redundantes a \texttt{A}, mediante la variable temporal \texttt{aik}, la versión bloqueada logró explotar mejor la localidad y obtener el mejor rendimiento medido.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+usuario@usuario-Predator-PHN16-72:~/Descargas/GPGPU/p1$ taskset -c 0 ./mat 1800 10 200 5
+N = 1800 (3 matrices ~ 37 MB)
+BS_min=10 BS_max=200 BS_step=5 (solo divisores de N)
+BS	tiempo_ms	MFLOPS
+10	2261.50	2578.82
+15	2355.02	2476.42
+20	1759.51	3314.56
+25	1708.34	3413.85
+30	1739.17	3353.33
+40	1670.06	3492.08
+45	1915.19	3045.12
+50	1638.51	3559.32
+60	1699.40	3431.79
+75	1672.82	3486.33
+90	1977.39	2949.35
+100	2013.38	2896.62
+120	2321.74	2511.90
+150	2404.80	2425.15
+180	2412.08	2417.83
+200	2443.50	2386.74
+
+Mejor BS = 50 (3559.32 MFLOPS)
+usuario@usuario-Predator-PHN16-72:~/Descargas/GPGPU/p1$ taskset -c 0 ./mat 1800 10 200 5
+N = 1800 (3 matrices ~ 37 MB)
+BS_min=10 BS_max=200 BS_step=5 (solo divisores de N)
+BS	tiempo_ms	MFLOPS
+10	2100.11	2777.00
+15	2178.00	2677.68
+20	1786.18	3265.07
+25	1724.19	3382.46
+30	1776.96	3282.02
+40	1671.80	3488.46
+45	1909.82	3053.70
+50	1634.04	3569.07
+60	1688.71	3453.51
+75	1676.80	3478.05
+90	1978.29	2948.00
+100	2023.36	2882.33
+120	2331.42	2501.48
+150	2407.69	2422.24
+180	2409.65	2420.27
+200	2401.37	2428.61
+
+Mejor BS = 50 (3569.07 MFLOPS)
+usuario@usuario-Predator-PHN16-72:~/Descargas/GPGPU/p1$ taskset -c 0 ./mat 1800 10 200 5
+N = 1800 (3 matrices ~ 37 MB)
+BS_min=10 BS_max=200 BS_step=5 (solo divisores de N)
+BS	tiempo_ms	MFLOPS
+10	2075.15	2810.40
+15	2177.09	2678.81
+20	1764.05	3306.02
+25	1706.02	3418.48
+30	1739.60	3352.49
+40	1657.90	3517.70
+45	1897.50	3073.52
+50	1630.47	3576.89
+60	1699.96	3430.67
+75	1670.16	3491.87
+90	1967.09	2964.78
+100	2021.45	2885.05
+120	2322.00	2511.63
+150	2409.76	2420.16
+180	2423.01	2406.92
+200	2408.31	2421.62
+
+Mejor BS = 50 (3576.89 MFLOPS)
+usuario@usuario-Predator-PHN16-72:~/Descargas/GPGPU/p1$ taskset -c 0 ./mat 1800 10 200 5
+N = 1800 (3 matrices ~ 37 MB)
+BS_min=10 BS_max=200 BS_step=5 (solo divisores de N)
+BS	tiempo_ms	MFLOPS
+10	2345.88	2486.06
+15	2378.72	2451.74
+20	1778.50	3279.17
+25	1970.14	2960.20
+30	2192.95	2659.43
+40	2033.73	2867.64
+45	2259.55	2581.04
+50	1840.97	3167.89
+60	1871.77	3115.77
+75	1991.63	2928.26
+90	2098.54	2779.07
+100	2094.18	2784.87
+120	2400.42	2429.57
+150	2530.15	2305.00
+180	2622.67	2223.69
+200	2909.08	2004.75
+
+Mejor BS = 20 (3279.17 MFLOPS)
+usuario@usuario-Predator-PHN16-72:~/Descargas/GPGPU/p1$ taskset -c 0 ./mat 1800 10 200 5
+N = 1800 (3 matrices ~ 37 MB)
+BS_min=10 BS_max=200 BS_step=5 (solo divisores de N)
+BS	tiempo_ms	MFLOPS
+10	2065.08	2824.11
+15	2188.22	2665.18
+20	1756.81	3319.65
+25	1705.30	3419.93
+30	1721.00	3388.74
+40	1658.69	3516.04
+45	1905.61	3060.44
+50	1637.59	3561.34
+60	1712.75	3405.06
+75	1673.79	3484.30
+90	1997.13	2920.18
+100	2022.30	2883.84
+120	2329.89	2503.13
+150	2404.74	2425.21
+180	2417.51	2412.40
+200	2407.50	2422.43
+
+Mejor BS = 50 (3561.34 MFLOPS)

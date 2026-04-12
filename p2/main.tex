@@ -1,0 +1,63 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{array}
+
+\geometry{margin=1.8cm}
+\setlength{\parskip}{0.22em}
+\setlength{\parindent}{0pt}
+
+\title{Práctico 2 --- Ejercicio 3: Transposición en memoria global}
+\author{%
+  Pedro Calado Moura \quad Documento: 65092945\\
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Análisis del kernel para $N=2048$}
+Se implementó el kernel bidimensional pedido en la consigna,
+\[
+\texttt{fila = blockIdx.y * blockDim.y + threadIdx.y,}\qquad
+\texttt{col = blockIdx.x * blockDim.x + threadIdx.x,}
+\]
+\[
+\texttt{out[col * N + fila] = in[fila * N + col].}
+\]
+La matriz está almacenada en orden por filas, por lo que el acceso \texttt{in[fila * N + col]} recorre posiciones consecutivas cuando varía \texttt{col}.
+
+Una aclaración importante que preguntamos por email, los warps en bloques bidimensionales, hilos se agrupan primero por el índice \texttt{x}, luego por \texttt{y} y luego por \texttt{z}. Por ejemplo, en un bloque de $16\times 16$, los 32 hilos del primer \emph{warp} son
+\[(x,y)=(0,0),(1,0),\dots,(15,0),(0,1),(1,1),\dots,(15,1).
+\]
+Por lo tanto, en un bloque de $32\times 32$, como \texttt{blockDim.x = 32}, cada \emph{warp} coincide exactamente con una fila del bloque: para un \emph{warp} dado, \texttt{threadIdx.y} queda fijo y \texttt{threadIdx.x} recorre los valores $0,\dots,31$.
+
+Con bloques de $32\times 32$, cada \emph{warp} lee 32 enteros consecutivos de la matriz \texttt{in}. Como cada \texttt{int} ocupa 4B, esto corresponde a 128B útiles; como además $N=2048$, cada fila ocupa $2048\cdot 4 = 8192$B, que es múltiplo de 128B, y el comienzo de cada grupo de 32 columnas también queda alineado. Por eso, la lectura de un \emph{warp} ocupa exactamente un bloque contiguo de 128B, que se resuelve en 4 transacciones consecutivas de 32B. En cambio, en la escritura sobre \texttt{out}, las direcciones entre hilos consecutivos del \emph{warp} quedan separadas por un \emph{stride} de $N$ enteros; para $N=2048$, eso equivale a $2048\cdot 4 = 8192$B entre una dirección y la siguiente. En consecuencia, los 32 accesos del \emph{warp} quedan distribuidos entre muchos segmentos distintos: la lectura presenta un patrón \emph{coalesced}, mientras que la escritura cae en el peor caso y requiere muchas más transacciones.
+
+ Para empezar implementamos un programa auxiliar que probó distintos tamaños de bloque y midió el tiempo de ejecución con eventos CUDA. Este barrido permitió observar una tendencia clara: conviene mantener \texttt{blockDim.x} pequeño, en particular alrededor de 8, ya que eso reduce la cantidad de columnas distintas recorridas por cada \emph{warp} y mejora el patrón de escritura. Experimentalmente también se observó que, una vez fijado \texttt{blockDim.x = 8}, la opción \texttt{blockDim.y = 16} produjo mejores tiempos que \texttt{blockDim.y = 32}. No tenemos una justificación concluyente de esta diferencia, ya que el valor de \texttt{blockDim.y} no modifica el patrón de accesos coalesced de cada \emph{warp}; una posible explicación es que con \(8\times 16\) el bloque tiene menos hilos totales y, por lo tanto, menos \emph{warps} por bloque, lo que resulta más conveniente para la ejecución en la GPU.
+
+Siguiendo esa idea, se comparó el caso base $32\times 32$ con la configuración $8\times 16$. Con \texttt{blockDim.x = 8}, cada fila del bloque tiene 8 hilos; como un \emph{warp} tiene 32 hilos, cada \emph{warp} pasa a cubrir 4 filas de 8 hilos cada una. En la lectura, cada una de esas 4 filas aporta 8 enteros consecutivos, es decir, 32B; como $N=2048$ y el desplazamiento horizontal del bloque es múltiplo de 8 enteros, cada uno de esos grupos queda alineado con un segmento de 32B. Por lo tanto, la lectura de un \emph{warp} sigue necesitando 4 transacciones de 32B.
+
+La mejora aparece en la escritura. Como ya hablamos con $32\times 32$, cada escritura cae en un segmento distinto de memoria global, y en el peor caso se necesitan 32 transacciones de 32B para completar la escritura del \emph{warp}. En cambio, con $8\times 16$, el \emph{warp} ya no cubre 32 columnas de una sola fila, sino 8 columnas y 4 filas. Fijada una columna del \emph{warp}, las 4 escrituras asociadas a esas 4 filas van a posiciones consecutivas de \texttt{out}, porque la dirección es de la forma \texttt{out[col * N + fila]}. Esas 4 escrituras corresponden a 4 enteros consecutivos, es decir, 16B útiles, y quedan contenidas dentro del mismo segmento de 32B. Como el \emph{warp} tiene 8 columnas distintas, la escritura se organiza en 8 grupos, y cada grupo puede resolverse con una sola transacción de 32B. De esta forma, el número de transacciones de escritura por \emph{warp} baja de 32 a 8.
+
+
+\begin{center}
+\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.5cm}ccc>{\raggedright\arraybackslash}p{6.2cm}}
+\toprule
+Configuración & Lectura & Escritura & Total & Comentario \\
+\midrule
+$32\times 32$ & 4 & 32 & 36 & Cada \emph{warp} coincide con una fila del bloque; la lectura es coalesced y la escritura queda en el peor caso. \\
+$8\times 16$ & 4 & 8 & 12 & Cada \emph{warp} cubre 4 filas de 8 hilos; se mantiene la buena lectura y la escritura mejora significativamente. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+En conclusión, el problema principal del kernel no está en la lectura, sino en la escritura de la transpuesta. El cambio de $32\times 32$ a $8\times 16$ no elimina completamente el \emph{stride}, pero sí reduce en forma importante la cantidad de transacciones de memoria global por \emph{warp}. Por eso, en nuestras pruebas, esta configuración resultó más conveniente que el caso base.
+
+\end{document}

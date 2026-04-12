@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -12,6 +13,22 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
+bool esTranspuesta(const int* in, const int* out, int N) {
+    for (int fila = 0; fila < N; fila++) {
+        for (int col = 0; col < N; col++) {
+            if (out[col * N + fila] != in[fila * N + col]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+/*
+Con 32*32, como vimos en clase, el warp contiene 32 hilos,
+En nuestro codigo, para un warp dado, cada hilo lee un int de 4 bytes de la matriz in y escribe un int de 4 bytes en la matriz out, 
+En la lectura de in, esos accesos son consecutivos dentro de una fila, se hace un acceso coalesced; en cambio en la escritura de out, no se hace un acceso coalesced,
+
+*/
 __global__ void kernel(int* in, int* out, int N) {
     int fila = blockIdx.y * blockDim.y + threadIdx.y;
     int col  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -20,29 +37,8 @@ __global__ void kernel(int* in, int* out, int N) {
         out[col * N + fila] = in[fila * N + col];
     }
 }
-
-__global__ void kernel(const int* in, int* out, int N) {
-    int col  = blockIdx.x * blockDim.x + threadIdx.x;
-    int fila = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (fila < N && col < N) {
-        out[col * N + fila] = in[fila * N + col];
-    }
-}
-
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        printf("Indicar el tamaño de la matriz"); exit(1);
-    }
-    if (argc < 3) {
-        printf("Indicar el tamaño de bloque en x"); exit(1);
-    }
-    if (argc < 4) {
-        printf("Indicar el tamaño de bloque en y"); exit(1);
-    }
-    int blockSizeX = atoi(argv[2]);
-    int blockSizeY = atoi(argv[3]);
-    int N = atoi(argv[1]);
+float ejecutarKernel(int N, int blockSizeX, int blockSizeY) {
+    
     int size = N * N * sizeof(int);
 
     int* h_A = (int*)malloc(size);
@@ -70,25 +66,45 @@ int main(int argc, char* argv[]) {
     cudaEventRecord(start);
     
     kernel<<<gridSize, blockSize>>>(d_A, d_B, N);
-    
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&ms, start, stop);
-    
-    printf("Tiempo kernel: %f ms\n", ms);
-    
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     CUDA_CHK(cudaGetLastError());
     CUDA_CHK(cudaDeviceSynchronize());
-
     CUDA_CHK(cudaMemcpy(h_B, d_B, size, cudaMemcpyDeviceToHost));
-
-   
     cudaFree(d_A);
     cudaFree(d_B);
     free(h_A);
     free(h_B);
+
+    return ms;
+}
+
+/* N = 16, 32, ..., 4096 (9 valores) */
+#define NUM_N 2048
+
+int main(int argc, char* argv[]) {
+    float best_ms = FLT_MAX;
+    int best_i = 0, best_j = 0;
+    int N = 2048;
+    for (int i = 1; i < 64; i *= 2) {
+        for (int j = 1; j < 64; j *= 2) {
+            float ms = ejecutarKernel(N, i, j);
+            if (ms < best_ms) {
+                best_ms = ms;
+                best_i = i;
+                best_j = j;
+            }
+        }
+    }
+
+
+
+
+    printf("\n=== Tamaño de bloque óptimo por N (kernel transpuesta) ===\n");
+    printf("N=%5d  ->  óptimo blockDim (%d, %d)  tiempo mínimo: %f ms\n",N, best_i, best_j, best_ms);
 
     return 0;
 }
