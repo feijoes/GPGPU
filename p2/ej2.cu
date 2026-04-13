@@ -52,7 +52,6 @@ __global__ void procesarMatriz_bidimensional(int* A, int N, int i1, int j1, int 
 
 int main(int argc, char* argv[]) {
     int N;
-    int grilla;
     int val;
     int i1;
     int j1;
@@ -66,24 +65,19 @@ int main(int argc, char* argv[]) {
     }
     if (argc < 3) 
     {
-        printf("Indicar grilla de hilos unidimensional o bidimensional (1 o 2)"); exit(1);
-    }
-    if (argc < 4) 
-    {
         printf("Indicar valor a sumar a la matriz"); exit(1);
     }
-    if (argc < 8) 
+    if (argc < 7) 
     {
         printf("indicar los valores i1, j1, i2, j2 para la submatriz"); exit(1);
     }
 	else {
 		N = atoi(argv[1]);
-		grilla = atoi(argv[2]);
-        val = atoi(argv[3]);
-        i1 = atoi(argv[4]);
-        j1 = atoi(argv[5]);
-        i2 = atoi(argv[6]);
-        j2 = atoi(argv[7]);
+		val = atoi(argv[2]);
+        i1 = atoi(argv[3]);
+        j1 = atoi(argv[4]);
+        i2 = atoi(argv[5]);
+        j2 = atoi(argv[6]);
     }
     int tam_submatriz = (i2 - i1 + 1) * (j2 - j1 + 1);
 
@@ -105,65 +99,31 @@ int main(int argc, char* argv[]) {
     float ms = 0.0f;
     CUDA_CHK(cudaEventCreate(&start));
     CUDA_CHK(cudaEventCreate(&stop));
-    
-    if (grilla == 1) {
-        int tam_bloque = 256;
-        dim3 blockSize(tam_bloque, 1);
-        if (tam_submatriz % tam_bloque == 0 ){
-            num_bloques = tam_submatriz/tam_bloque;
-        }else
-            num_bloques = tam_submatriz / tam_bloque + 1;       
 
-        dim3 gridSize(num_bloques, 1);
+    // grilla de hilos unidimensional
 
-        printf("num_bloques: %d\n", num_bloques);
-        printf("tam_bloque: %d\n", tam_bloque);
-        printf("tam_submatriz: %d\n", tam_submatriz);
-        printf("extra threads: %d\n", num_bloques * tam_bloque - tam_submatriz);
-        CUDA_CHK(cudaEventRecord(start));
-        procesarMatriz_unidimensional<<<gridSize, blockSize>>>(d_A, N, i1, j1, i2, j2, val);
-        CUDA_CHK(cudaEventRecord(stop));
+    int tam_bloque = 256;
+    dim3 blockSize1D(tam_bloque, 1);
+    if (tam_submatriz % tam_bloque == 0 ){
+        num_bloques = tam_submatriz/tam_bloque;
+    }else
+        num_bloques = tam_submatriz / tam_bloque + 1;       
 
+    dim3 gridSize1D(num_bloques, 1);
 
-    } else if (grilla == 2) {
+    printf("Grilla unidimensional: \n");
+    printf("num_bloques: %d\n", num_bloques);
+    printf("tam_bloque: %d\n", tam_bloque);
+    printf("tam_submatriz: %d\n", tam_submatriz);
+    printf("extra threads: %d\n", num_bloques * tam_bloque - tam_submatriz);
+    CUDA_CHK(cudaEventRecord(start));
+    procesarMatriz_unidimensional<<<gridSize1D, blockSize1D>>>(d_A, N, i1, j1, i2, j2, val);
+    CUDA_CHK(cudaEventRecord(stop));
 
-        int tam_x = j2 - j1 + 1;
-        int tam_y = i2 - i1 + 1;
-
-        int tam_bloque_x = 16;
-        int tam_bloque_y = 16;
-
-        int num_bloques_x;
-        int num_bloques_y;
-
-        if (tam_x % tam_bloque_x == 0 ){
-            num_bloques_x = tam_x/tam_bloque_x;
-        }else
-            num_bloques_x = tam_x / tam_bloque_x + 1;       
-        
-        if (tam_y % tam_bloque_y == 0 ){
-            num_bloques_y = tam_y/tam_bloque_y;
-        }else
-            num_bloques_y = tam_y / tam_bloque_y + 1;       
-
-        printf("tam_bloque: (%d, %d)\n", tam_bloque_x, tam_bloque_y);
-        printf("num_bloques: (%d, %d)\n", num_bloques_x, num_bloques_y);
-        printf("tam_submatriz: (%d, %d)\n", tam_x, tam_y);
-        printf("extra threads: (%d, %d)\n", num_bloques_x * tam_bloque_x - tam_x, num_bloques_y * tam_bloque_y - tam_y);
-        dim3 gridSize(num_bloques_x, num_bloques_y);
-        dim3 blockSize(tam_bloque_x, tam_bloque_y);
-
-        CUDA_CHK(cudaEventRecord(start));
-        procesarMatriz_bidimensional<<<gridSize, blockSize>>>(d_A, N, i1, j1, i2, j2, val);
-        CUDA_CHK(cudaEventRecord(stop));
-    }
     CUDA_CHK(cudaEventSynchronize(stop));
     CUDA_CHK(cudaEventElapsedTime(&ms, start, stop));
     printf("Tiempo kernel: %f ms\n", ms);
-    
-    CUDA_CHK(cudaEventDestroy(start));
-    CUDA_CHK(cudaEventDestroy(stop));
-    
+
     CUDA_CHK(cudaGetLastError());
     CUDA_CHK(cudaDeviceSynchronize());
 
@@ -178,7 +138,71 @@ int main(int argc, char* argv[]) {
             printf("\n");
         }
     }
-    
+
+    printf("\n");
+
+    // grilla de hilos bidimensional
+
+    // resetear la matriz a 0
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            h_A[i*N + j] = 0;
+        }
+    }
+    CUDA_CHK(cudaMemcpy(d_A, h_A, N*N*sizeof(int), cudaMemcpyHostToDevice));
+
+    int tam_x = j2 - j1 + 1;
+    int tam_y = i2 - i1 + 1;
+
+    int tam_bloque_x = 16;
+    int tam_bloque_y = 16;
+
+    int num_bloques_x;
+    int num_bloques_y;
+
+    if (tam_x % tam_bloque_x == 0 ){
+        num_bloques_x = tam_x/tam_bloque_x;
+    }else
+        num_bloques_x = tam_x / tam_bloque_x + 1;       
+        
+    if (tam_y % tam_bloque_y == 0 ){
+        num_bloques_y = tam_y/tam_bloque_y;
+    }else
+        num_bloques_y = tam_y / tam_bloque_y + 1;    
+
+    printf("Grilla bidimensional: \n");
+    printf("tam_bloque: (%d, %d)\n", tam_bloque_x, tam_bloque_y);
+    printf("num_bloques: (%d, %d)\n", num_bloques_x, num_bloques_y);
+    printf("tam_submatriz: (%d, %d)\n", tam_x, tam_y);
+    printf("extra threads: (%d, %d)\n", num_bloques_x * tam_bloque_x - tam_x, num_bloques_y * tam_bloque_y - tam_y);
+    dim3 gridSize2D(num_bloques_x, num_bloques_y);
+    dim3 blockSize2D(tam_bloque_x, tam_bloque_y);
+
+    CUDA_CHK(cudaEventRecord(start));
+    procesarMatriz_bidimensional<<<gridSize2D, blockSize2D>>>(d_A, N, i1, j1, i2, j2, val);
+    CUDA_CHK(cudaEventRecord(stop));
+
+    CUDA_CHK(cudaEventSynchronize(stop));
+    CUDA_CHK(cudaEventElapsedTime(&ms, start, stop));
+    printf("Tiempo kernel: %f ms\n\n", ms);
+
+    CUDA_CHK(cudaEventDestroy(start));
+    CUDA_CHK(cudaEventDestroy(stop));
+
+    CUDA_CHK(cudaGetLastError());
+    CUDA_CHK(cudaDeviceSynchronize());
+
+    CUDA_CHK(cudaMemcpy(h_A, d_A, N*N*sizeof(int), cudaMemcpyDeviceToHost));
+
+    if (N <= 10) {  
+        printf("\nMatriz procesada\n");
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                printf("%d ", h_A[i*N + j]);
+            }
+            printf("\n");
+        }
+    }
 
     free(h_A);
     cudaFree(d_A);

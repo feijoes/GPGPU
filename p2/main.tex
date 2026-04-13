@@ -15,6 +15,7 @@
 \title{Práctico 2 --- Ejercicio 3: Transposición en memoria global}
 \author{%
   Pedro Calado Moura \quad Documento: 65092945\\
+  Brandon Calimares \quad Documento: 55819680
 }
 \date{}
 
@@ -43,7 +44,7 @@ Con bloques de $32\times 32$, cada \emph{warp} lee 32 enteros consecutivos de la
 
 Siguiendo esa idea, se comparó el caso base $32\times 32$ con la configuración $8\times 16$. Con \texttt{blockDim.x = 8}, cada fila del bloque tiene 8 hilos; como un \emph{warp} tiene 32 hilos, cada \emph{warp} pasa a cubrir 4 filas de 8 hilos cada una. En la lectura, cada una de esas 4 filas aporta 8 enteros consecutivos, es decir, 32B; como $N=2048$ y el desplazamiento horizontal del bloque es múltiplo de 8 enteros, cada uno de esos grupos queda alineado con un segmento de 32B. Por lo tanto, la lectura de un \emph{warp} sigue necesitando 4 transacciones de 32B.
 
-La mejora aparece en la escritura. Como ya hablamos con $32\times 32$, cada escritura cae en un segmento distinto de memoria global, y en el peor caso se necesitan 32 transacciones de 32B para completar la escritura del \emph{warp}. En cambio, con $8\times 16$, el \emph{warp} ya no cubre 32 columnas de una sola fila, sino 8 columnas y 4 filas. Fijada una columna del \emph{warp}, las 4 escrituras asociadas a esas 4 filas van a posiciones consecutivas de \texttt{out}, porque la dirección es de la forma \texttt{out[col * N + fila]}. Esas 4 escrituras corresponden a 4 enteros consecutivos, es decir, 16B útiles, y quedan contenidas dentro del mismo segmento de 32B. Como el \emph{warp} tiene 8 columnas distintas, la escritura se organiza en 8 grupos, y cada grupo puede resolverse con una sola transacción de 32B. De esta forma, el número de transacciones de escritura por \emph{warp} baja de 32 a 8.
+La mejora aparece en la escritura. Como ya hablamos con $32\times 32$, cada escritura cae en un segmento distinto de memoria global, y en el peor caso se necesitan 32 transacciones de 32B para completar la escritura del \emph{warp}. En cambio, con $8\times 16$, el \emph{warp} ya no cubre 32 celdas de una sola fila, sino 8 celdas de 4 filas. Fijada una columna del \emph{warp}, las 4 escrituras asociadas a esas 4 filas van a posiciones consecutivas de \texttt{out}, porque la dirección es de la forma \texttt{out[col * N + fila]}. Esas 4 escrituras corresponden a 4 enteros consecutivos, es decir, 16B útiles, y quedan contenidas dentro del mismo segmento de 32B. Como el \emph{warp} tiene 8 columnas distintas, la escritura se organiza en 8 grupos, y cada grupo puede resolverse con una sola transacción de 32B. De esta forma, el número de transacciones de escritura por \emph{warp} baja de 32 a 8.
 
 
 \begin{center}

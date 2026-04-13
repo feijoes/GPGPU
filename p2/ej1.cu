@@ -28,7 +28,9 @@ __device__ int modulo(int a, int b){
 
 __global__ void decrypt_kernel(int *d_message, int length)
 {
-	d_message[blockIdx.x*blockDim.x + threadIdx.x] = modulo(A_MMI_M * (d_message[blockIdx.x*blockDim.x + threadIdx.x] - B), M);
+	int id = blockIdx.x * blockDim.x + threadIdx.x;
+	if (id < length)
+		d_message[id] = modulo(A_MMI_M * (d_message[id] - B), M);
 }
 
 int main(int argc, char *argv[])
@@ -62,11 +64,11 @@ int main(int argc, char *argv[])
 	}else
 		num_bloques = length / tam_bloque + 1;
 		
-	dim3 gridSize(num_bloques,1); // 1 bloque
-	dim3 blockSize(tam_bloque,1); // length threads
-	decrypt_kernel <<< gridSize, blockSize >>> (d_message, length); // invocar el kerne
+	dim3 gridSize(num_bloques,1);
+	dim3 blockSize(tam_bloque,1);
+	decrypt_kernel <<< gridSize, blockSize >>> (d_message, length); // invocar el kernel
 	CUDA_CHK(cudaGetLastError());
-	// Obligo al Kernel a llegar al final de su ejecucion y obtener posibles errores
+	// obligo al Kernel a llegar al final de su ejecucion y obtener posibles errores
 	CUDA_CHK(cudaDeviceSynchronize());
 	CUDA_CHK(cudaMemcpy(h_message, d_message, size, cudaMemcpyDeviceToHost));
 
@@ -80,6 +82,7 @@ int main(int argc, char *argv[])
 	// libero la memoria en la CPU
 	free(h_message);
 	cudaFree(d_message);
+
 	return 0;
 }
 
